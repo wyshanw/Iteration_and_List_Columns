@@ -1,0 +1,232 @@
+---
+title: "Iteration and List Columns"
+output: github_document
+---
+
+```{r, echo = FALSE, message=FALSE}
+library(tidyverse)
+
+```
+
+## list
+
+you can put anything in a list
+
+```{r}
+vec_numeric = 5:8
+vec_char = c("My", "name", "is", "Jeff")
+vec_logical = c(TRUE, TRUE, TRUE, FALSE)
+mat = matrix(1:8, nrow = 2, ncol = 4, byrow = F)
+summary = summary(rnorm(100))
+
+l = list(
+  vec_numeric = 5:8,
+  mat         = matrix(1:8, 2, 4),
+  vec_logical = c(TRUE, FALSE),
+  summary     = summary(rnorm(1000)))
+l
+```
+
+```{r}
+l$vec_numeric
+l[[1]]
+mean(l[["vec_numeric"]])
+l[[1]][1:3]
+
+```
+
+## `for` loop
+
+create a new list
+
+```{r}
+list_norms = 
+  list(
+    a = rnorm(20, 3, 1),
+    b = rnorm(20, 0, 5),
+    c = rnorm(20, 10, .2),
+    d = rnorm(20, -3, 1)
+  )
+
+is.list(list_norms)
+list_norms[1]
+```
+
+pause and look at old functions
+
+```{r}
+mean_and_sd = function(x) {
+  
+  if (!is.numeric(x)) {
+    stop("Argument x should be numeric")
+  } else if (length(x) == 1) {
+    stop("Cannot be computed for length 1 vectors")
+  }
+  
+  mean_x = mean(x)
+  sd_x = sd(x)
+
+  tibble(
+    mean = mean_x, 
+    sd = sd_x
+  )
+}
+```
+
+i can apply that function to each list element
+
+```{r}
+mean_and_sd(list_norms[[1]])
+mean_and_sd(list_norms[[2]])
+```
+
+let's use for loop
+
+```{r}
+output = vector("list", length = 4)
+
+for (i in 1:4) {
+  output[[i]] = mean_and_sd(list_norms[[i]])
+}
+```
+
+## let's try map
+
+```{r}
+output = map(list_norms, mean_and_sd)
+```
+
+what is want different func
+
+```{r}
+output = map(list_norms, median)
+```
+
+
+```{r}
+output = map_dbl(list_norms, median, .id = "input") # not a list, give vector
+
+output = map_df(list_norms, mean_and_sd, .id = "input") # keep track input id name
+```
+
+
+## list columns
+
+```{r}
+listcol_df = 
+  tibble(
+    name = c("a", "b", "c", "d"),
+    samp = list_norms
+  )
+
+listcol_df %>% pull(name)
+listcol_df %>% pull(samp)
+listcol_df %>% 
+  filter(name == "a")
+```
+
+let's try some operation
+
+```{r}
+listcol_df$samp[[1]]
+mean_and_sd(listcol_df$samp[[1]])
+```
+
+just map
+
+```{r}
+map(listcol_df$samp, mean_and_sd)
+```
+
+add list column
+
+```{r}
+listcol_df = 
+  listcol_df %>% 
+  mutate(
+    summary = map(samp, mean_and_sd),
+    medians = map_dbl(samp, median)
+         )
+
+listcol_df
+```
+
+## Nested data
+
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728", "USC00519397", "USS0023B17S"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(
+      id, 
+      USW00094728 = "CentralPark_NY", 
+      USC00519397 = "Waikiki_HA",
+      USS0023B17S = "Waterhole_WA"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+get our list column
+
+```{r}
+#weather_nest = 
+  #nest(weather_df, data = date:tmin)
+
+weather_nest = 
+  weather_df %>% 
+  nest(data = date:tmin)
+
+weather_nest
+```
+
+```{R}
+weather_nest %>% pull(name)
+weather_nest %>% pull(data)
+weather_nest$data[1]
+```
+
+suppose want to regress `tmax` on `tmin` for each station
+
+```{r}
+weather_lm = function(df) {
+  lm(tmax ~ tmin, data = df)
+}
+
+weather_lm(weather_nest$data[[1]])
+
+output = vector("list", 3)
+
+for (i in 1:3) {
+  
+  output[[i]] = weather_lm(weather_nest$data[[i]])
+  
+}
+
+# what about map
+map(weather_nest$data, weather_lm)
+```
+
+what about map in a list column
+
+```{r}
+weather_nest = 
+  weather_nest %>% 
+  mutate(models = map(data, weather_lm))
+
+weather_nest
+
+
+map(weather_nest$data, ~lm(tmax ~ tmin, data = .x))
+```
+
+
+
+
+
+
